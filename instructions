@@ -1,1 +1,119 @@
-run the train file(only 1 time needed) then run the test file
+# Gravitational Wave Noise Filter
+
+## 📌 Project Overview
+
+This project focuses on denoising gravitational wave signals using a deep learning model. The model is trained to remove noise from raw signals obtained from detectors such as LIGO and Virgo, improving signal clarity for analysis.
+
+---
+
+## ⚙️ Features
+
+* Deep learning-based noise reduction
+* Supports real gravitational wave signal formats
+* Visualization of denoised signals
+* Streamlit web interface for easy interaction
+
+---
+
+## 🛠️ Technologies Used
+
+* Python
+* PyTorch
+* NumPy
+* Streamlit
+
+---
+
+## 📂 Project Structure
+
+```
+├── app.py              # Streamlit application
+├── model.py            # Model architecture
+├── train.py            # Training script
+├── test.py             # Testing script
+├── preprocessing.py    # Data preprocessing
+├── utils.py            # Helper functions
+├── denoiser.pth        # Trained model weights
+├── requirements.txt    # Dependencies
+└── RESULTS/            # Output plots
+```
+
+---
+
+## 🚀 How to Run the Project
+
+### 1. Clone the Repository
+
+```
+git clone https://github.com/RAHUL576-R/Gravitational-Wave-Noise-Filter.git
+cd Gravitational-Wave-Noise-Filter
+```
+
+---
+
+### 2. Install Dependencies
+
+```
+pip install -r requirements.txt
+```
+
+---
+
+### 3. Run the Streamlit App
+
+```
+streamlit run app.py
+```
+
+---
+
+### 4. Use the Application
+
+* Upload a noisy signal file (`.npy`)
+* The model processes the signal
+* View the denoised output graph
+
+---
+
+## 🧠 Model Details
+
+* The model is a neural network trained on noisy gravitational wave signals
+* It learns to map noisy input → clean output
+* Stored in `denoiser.pth`
+
+---
+
+## 📊 Results
+
+* Significant noise reduction observed
+* Clearer waveform reconstruction
+* Improved signal visibility for analysis
+
+---
+
+## ⚠️ Notes
+
+* The trained model file (`denoiser.pth`) may be large
+* If not available, it can be loaded externally (e.g., Google Drive)
+
+---
+
+## 📌 Future Improvements
+
+* Real-time signal processing
+* Support for more detectors
+* Improved model accuracy
+* Enhanced visualization
+
+---
+
+## 👨‍💻 Author
+
+Rahul
+
+---
+
+## 📜 License
+
+This project is for educational purposes.
+
