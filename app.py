@@ -41,6 +41,47 @@ def passes(m):
     )
 
 
+# ── Cached functions — survive browser disconnect on Railway ───────────────────
+
+@st.cache_data(show_spinner=False)
+def cached_preprocess(detector, gps_start, gps_end):
+    """Fetch + preprocess once. Reconnecting reuses this result."""
+    return preprocess(detector, gps_start, gps_end)
+
+
+@st.cache_data(show_spinner=False)
+def cached_run_segment(segment_bytes, seg_idx):
+    """
+    Run model inference + metrics for one segment.
+    Keyed by segment content + index so each segment is cached independently.
+    Reconnecting mid-run restores already-completed segments instantly.
+    """
+    noisy_np = np.frombuffer(segment_bytes, dtype=np.float32).copy()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model, _ = load_model()
+
+    inp_t = torch.tensor(noisy_np).unsqueeze(0).unsqueeze(0).to(device)
+    with torch.no_grad():
+        recon_np = model(inp_t).squeeze().cpu().numpy()
+
+    m  = evaluate(noisy_np, recon_np)
+    pf = passes(m)
+    ok = all(pf.values())
+    return noisy_np, recon_np, m, pf, ok
+
+
+@st.cache_data(show_spinner=False)
+def cached_plot(noisy_bytes, recon_bytes, title, seg_idx):
+    """Render the 4-panel plot once and cache the PNG bytes."""
+    noisy_np = np.frombuffer(noisy_bytes, dtype=np.float32).copy()
+    recon_np = np.frombuffer(recon_bytes, dtype=np.float32).copy()
+    save_path = f"/tmp/plot_seg{seg_idx}.png"
+    plot_signals(noisy_np, recon_np, title=title, save_path=save_path, fs=SAMPLE_RATE)
+    with open(save_path, "rb") as f:
+        return f.read()
+
+
 # ── Page ───────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="GW Denoiser", page_icon="🌊", layout="wide")
 st.title("🌊 Gravitational Wave Noise Filter")
@@ -88,15 +129,15 @@ if gps_end <= gps_start:
     st.error("GPS End must be greater than GPS Start.")
     st.stop()
 
-run = st.button("▶  Run Denoiser", type="primary", use_container_width=True)
+run = st.button("▶  Run Denoiser", type="primary", use_column_width=True)
 if not run:
     st.stop()
 
-# ── Fetch + preprocess ─────────────────────────────────────────────────────────
+# ── Fetch + preprocess (cached) ────────────────────────────────────────────────
 st.divider()
 with st.spinner(f"Fetching {detector} strain [{gps_start} – {gps_end}] from GWOSC…"):
     try:
-        segments = preprocess(detector, int(gps_start), int(gps_end))
+        segments = cached_preprocess(detector, int(gps_start), int(gps_end))
     except Exception as e:
         st.error(f"Preprocessing failed: {e}")
         st.stop()
@@ -104,19 +145,14 @@ with st.spinner(f"Fetching {detector} strain [{gps_start} – {gps_end}] from GW
 n_segs = min(len(segments), max_segs)
 st.write(f"**Segments available:** {len(segments)}  |  **Evaluating:** {n_segs}")
 
-# ── Inference + metrics ────────────────────────────────────────────────────────
+# ── Inference + metrics (each segment cached independently) ────────────────────
 all_results = []
 progress = st.progress(0, text="Running denoiser…")
 
 for i in range(n_segs):
-    noisy_np = segments[i]
-    inp_t    = torch.tensor(noisy_np).unsqueeze(0).unsqueeze(0).to(device)
-    with torch.no_grad():
-        recon_np = model(inp_t).squeeze().cpu().numpy()
-
-    m  = evaluate(noisy_np, recon_np)
-    pf = passes(m)
-    ok = all(pf.values())
+    # Convert to bytes so st.cache_data can hash it
+    seg_bytes = segments[i].astype(np.float32).tobytes()
+    noisy_np, recon_np, m, pf, ok = cached_run_segment(seg_bytes, i)
     all_results.append((i, noisy_np, recon_np, m, pf, ok))
     progress.progress((i + 1) / n_segs, text=f"Segment {i+1}/{n_segs}")
 
@@ -144,15 +180,13 @@ for i, noisy_np, recon_np, m, pf, ok in all_results:
             ]))
 
         with col2:
-            save_path = f"/tmp/plot_seg{i+1}.png"
-            plot_signals(
-                noisy_np, recon_np,
-                title=f"{detector} | GPS {gps_start}–{gps_end} | Segment {i+1}",
-                save_path=save_path,
-                fs=SAMPLE_RATE,
+            title = f"{detector} | GPS {gps_start}–{gps_end} | Segment {i+1}"
+            png_bytes = cached_plot(
+                noisy_np.astype(np.float32).tobytes(),
+                recon_np.astype(np.float32).tobytes(),
+                title, i
             )
-            with open(save_path, "rb") as f:
-                st.image(f.read(), use_container_width=True)
+            st.image(png_bytes, use_column_width=True)
 
 # ── Summary ────────────────────────────────────────────────────────────────────
 st.divider()
@@ -173,4 +207,3 @@ if n_pass == n_segs:
     st.success("All evaluated segments passed every threshold.")
 else:
     st.warning(f"{n_segs - n_pass} segment(s) failed one or more thresholds.")
-# ── Thresholds (identical to TEST.PY) ─────────────────────────────────────────
