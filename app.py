@@ -2,7 +2,7 @@ import streamlit as st
 import torch
 import numpy as np
 from model import Autoencoder
-
+import h5py
 st.title("Gravitational Wave Noise Filter")
 
 @st.cache_resource
@@ -16,10 +16,13 @@ def load_model():
 model = load_model()
 st.success("Model loaded successfully")
 
-uploaded_file = st.file_uploader("Upload noisy signal (.npy)")
-
+uploaded_file = st.file_uploader("Upload noisy signal", type=["npy", "hdf", "h5"])
 if uploaded_file is not None:
-    signal = np.load(uploaded_file)
+    if uploaded_file.name.endswith(".npy"):
+        signal = np.load(uploaded_file)
+    elif uploaded_file.name.endswith((".hdf", ".h5")):
+        with h5py.File(uploaded_file, "r") as f:
+            signal = f[list(f.keys())[0]][()]
 
     signal_tensor = torch.tensor(signal, dtype=torch.float32)
 
