@@ -16,11 +16,11 @@ def load_model():
 model = load_model()
 st.success("Model loaded successfully")
 
-uploaded_file = st.file_uploader("Upload noisy signal", type=["npy", "hdf", "h5"])
+uploaded_file = st.file_uploader("Upload noisy signal", type=["npy","hdf5", "hdf", "h5"])
 if uploaded_file is not None:
     if uploaded_file.name.endswith(".npy"):
         signal = np.load(uploaded_file)
-    elif uploaded_file.name.endswith((".hdf", ".h5")):
+    elif uploaded_file.name.endswith((".hdf", ".h5", ".hdf5")):
         with h5py.File(uploaded_file, "r") as f:
             signal = f[list(f.keys())[0]][()]
 
