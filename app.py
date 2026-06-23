@@ -1,11 +1,16 @@
-import gradio as gr
+import streamlit as st
+
+st.set_page_config(page_title="GW Filter", layout="wide")
+import os
+os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
 import torch
 import numpy as np
-import matplotlib.pyplot as plt
 from model import Autoencoder
 
-# ── Model loading ────────────────────────────
+st.title("Gravitational Wave Noise Filter")
 
+# ── Load model ─────────────────────────────
+@st.cache_resource
 def load_model():
     model = Autoencoder()
     checkpoint = torch.load("denoiser.pth", map_location="cpu")
@@ -14,10 +19,15 @@ def load_model():
     return model
 
 model = load_model()
+st.success("Model loaded successfully")
 
+# ── File upload ─────────────────────────────
+uploaded_file = st.file_uploader("Upload noisy signal (.npy)")
 
-def denoise_npy_file(noisy_file):
-    signal = np.load(noisy_file)
+if uploaded_file is not None:
+    signal = np.load(uploaded_file)
+
+    # ── Convert to correct shape (B, 1, L) ──
     signal_tensor = torch.tensor(signal, dtype=torch.float32)
 
     if signal_tensor.ndim == 1:
@@ -25,27 +35,11 @@ def denoise_npy_file(noisy_file):
     elif signal_tensor.ndim == 2:
         signal_tensor = signal_tensor.unsqueeze(1)
 
+    # ── Inference ─────────────────────────────
     with torch.no_grad():
         output = model(signal_tensor)
 
     output = output.squeeze().cpu().numpy()
 
-    fig, ax = plt.subplots()
-    ax.plot(output)
-    ax.set_title("Denoised Output")
-    ax.set_xlabel("Sample Index")
-    ax.set_ylabel("Amplitude")
-    fig.tight_layout()
-    return fig
-
-
-demo = gr.Interface(
-    fn=denoise_npy_file,
-    inputs=gr.File(label="Upload noisy signal (.npy)"),
-    outputs=gr.Plot(label="Denoised Signal"),
-    title="Gravitational Wave Noise Filter",
-    description="Upload a noisy gravitational-wave signal saved as a NumPy .npy file and view the denoised waveform.",
-)
-
-if __name__ == "__main__":
-    demo.launch()
+    st.write("Denoised Output:")
+    st.line_chart(output)
