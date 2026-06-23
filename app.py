@@ -1,4 +1,8 @@
 import streamlit as st
+
+st.set_page_config(page_title="GW Filter", layout="wide")
+import os
+os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
 import torch
 import numpy as np
 from model import Autoencoder
