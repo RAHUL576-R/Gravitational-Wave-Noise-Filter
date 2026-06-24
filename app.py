@@ -129,7 +129,7 @@ if gps_end <= gps_start:
     st.error("GPS End must be greater than GPS Start.")
     st.stop()
 
-run = st.button("▶  Run Denoiser", type="primary", use_column_width=True)
+run = st.button("▶  Run Denoiser", type="primary", use_container_width=True)
 if not run:
     st.stop()
 
