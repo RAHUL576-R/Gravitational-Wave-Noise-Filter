@@ -3,8 +3,6 @@ app.py — Streamlit deployment of the GW denoiser
 Runs ALL segments as a batch exactly like TEST.PY,
 then evaluates and plots segment[0] only.
 """
-import os
-port = int(os.environ.get("PORT", 8501))
 
 import numpy as np
 import torch
@@ -15,7 +13,7 @@ from utils import compute_snr, compute_pearson, compute_spectral_mse, plot_signa
 from model import Autoencoder
 
 TARGET_SNR      =  3.0
-TARGET_MSE      =  0.5
+TARGET_MSE      =  0.50
 TARGET_NR       = 40.0
 TARGET_PEARSON  =  0.85
 TARGET_SPEC_MSE =  0.10
@@ -49,8 +47,10 @@ def load_model():
     m = Autoencoder().to(device)
     ckpt = torch.load("denoiser.pth", map_location=device)
     m.load_state_dict(ckpt["model_state"])
-    m.eval()
-    return m, device
+    m.eval()  # identical to TEST.PY — eval mode, never switched
+    epoch    = ckpt.get("epoch", "?")
+    val_loss = ckpt.get("val_loss", float("nan"))
+    return m, device, epoch, val_loss
 
 
 @st.cache_data(show_spinner=False)
@@ -69,20 +69,18 @@ def cached_run_and_plot(segments_bytes, n_segs, title):
     segments = np.frombuffer(segments_bytes, dtype=np.float32).copy().reshape(n_segs, WINDOW_LENGTH)
 
     device   = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model, _ = load_model()
+    model, device, _, __ = load_model()
 
-    # Batch inference — use train() so BatchNorm uses batch stats like TEST.PY
+    # Batch inference — identical to TEST.PY (model stays in eval mode)
     inp_t = torch.tensor(segments, dtype=torch.float32).unsqueeze(1).to(device)
-    model.train()
     with torch.no_grad():
         recon_t = model(inp_t)
-    model.eval()
 
     # Only segment[0] — identical to TEST.PY
     noisy_np = inp_t[0].squeeze().cpu().numpy()
     recon_np = recon_t[0].squeeze().cpu().numpy()
 
-    # Rescale recon to match noisy amplitude — fixes scale mismatch from BatchNorm train() mode
+    # Rescale recon to match noisy amplitude — handles PyTorch version differences
     noisy_std = np.std(noisy_np) + 1e-12
     recon_std = np.std(recon_np) + 1e-12
     recon_np  = recon_np * (noisy_std / recon_std)
@@ -104,13 +102,20 @@ st.set_page_config(page_title="GW Denoiser", page_icon="🌊", layout="wide")
 st.title("🌊 Gravitational Wave Noise Filter")
 
 try:
-    model, device = load_model()
+    model, device, epoch, val_loss = load_model()
     st.sidebar.success(f"Model loaded ✅ | Device: **{device}**")
+    st.sidebar.write(f"Trained {epoch} epochs | val loss: {val_loss:.6f}")
 except Exception as e:
     st.error(f"Failed to load model: {e}")
     st.stop()
 
 with st.sidebar:
+    import hashlib
+    with open("denoiser.pth", "rb") as f:
+        md5 = hashlib.md5(f.read()).hexdigest()
+    match = "✅ Match" if md5 == "ef4db5192302357b2e1f3adbfdbaac77" else "❌ Different"
+    st.write(f"Checkpoint: {match}")
+    st.write(f"MD5: {md5}")
     st.subheader("Pass Thresholds")
     st.markdown(f"""
 | Metric | Threshold |
