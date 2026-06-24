@@ -12,11 +12,6 @@ from preprocessing import preprocess, SAMPLE_RATE, WINDOW_LENGTH
 from utils import compute_snr, compute_pearson, compute_spectral_mse, plot_signals
 from model import Autoencoder
 
-import hashlib
-with open("denoiser.pth", "rb") as f:
-    md5 = hashlib.md5(f.read()).hexdigest()
-st.sidebar.write(f"Checkpoint MD5: {md5}")
-
 TARGET_SNR      =  3.0
 TARGET_MSE      =  0.05
 TARGET_NR       = 40.0
