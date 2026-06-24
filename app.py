@@ -1,17 +1,15 @@
 """
-app.py — Streamlit deployment of the GW denoiser
+
 """
 
-import io
 import numpy as np
 import torch
 import streamlit as st
 
-from preprocessing import preprocess, SAMPLE_RATE
+from preprocessing import preprocess, SAMPLE_RATE, WINDOW_LENGTH
 from utils import compute_snr, compute_pearson, compute_spectral_mse, plot_signals
 from model import Autoencoder
 
-# ── Thresholds ─────────────────────────────────────────────────────────────────
 TARGET_SNR      =  3.0
 TARGET_MSE      =  0.05
 TARGET_NR       = 40.0
@@ -41,42 +39,6 @@ def passes(m):
     )
 
 
-# ── Cached functions ───────────────────────────────────────────────────────────
-
-@st.cache_data(show_spinner=False)
-def cached_preprocess(detector, gps_start, gps_end):
-    return preprocess(detector, gps_start, gps_end)
-
-
-@st.cache_data(show_spinner=False)
-def cached_run_segment(segment_bytes, seg_idx):
-    noisy_np = np.frombuffer(segment_bytes, dtype=np.float32).copy()
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model, _ = load_model()
-    inp_t = torch.tensor(noisy_np).unsqueeze(0).unsqueeze(0).to(device)
-    with torch.no_grad():
-        recon_np = model(inp_t).squeeze().cpu().numpy()
-    m  = evaluate(noisy_np, recon_np)
-    pf = passes(m)
-    ok = all(pf.values())
-    return noisy_np, recon_np, m, pf, ok
-
-
-@st.cache_data(show_spinner=False)
-def cached_plot(noisy_bytes, recon_bytes, title, seg_idx):
-    noisy_np = np.frombuffer(noisy_bytes, dtype=np.float32).copy()
-    recon_np = np.frombuffer(recon_bytes, dtype=np.float32).copy()
-    save_path = f"/tmp/plot_seg{seg_idx}.png"
-    plot_signals(noisy_np, recon_np, title=title, save_path=save_path, fs=SAMPLE_RATE)
-    with open(save_path, "rb") as f:
-        return f.read()
-
-
-# ── Page setup ─────────────────────────────────────────────────────────────────
-st.set_page_config(page_title="GW Denoiser", page_icon="🌊", layout="wide")
-st.title("🌊 Gravitational Wave Noise Filter")
-
-# ── Load model ─────────────────────────────────────────────────────────────────
 @st.cache_resource
 def load_model():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -85,6 +47,50 @@ def load_model():
     m.load_state_dict(ckpt["model_state"])
     m.eval()
     return m, device
+
+
+@st.cache_data(show_spinner=False)
+def cached_preprocess(detector, gps_start, gps_end):
+    """Full preprocess — returns ALL segments exactly like TEST.PY."""
+    segs = preprocess(detector, gps_start, gps_end)   # (N, WINDOW_LENGTH)
+    return segs.astype(np.float32)
+
+
+@st.cache_data(show_spinner=False)
+def cached_run_and_plot(segments_bytes, n_segs, title):
+    """
+    Run ALL segments as one batch — identical to TEST.PY.
+    Evaluate and plot only segment[0].
+    """
+    segments = np.frombuffer(segments_bytes, dtype=np.float32).copy().reshape(n_segs, WINDOW_LENGTH)
+
+    device   = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model, _ = load_model()
+
+    # Batch inference — identical to TEST.PY
+    inp_t = torch.tensor(segments, dtype=torch.float32).unsqueeze(1).to(device)
+    with torch.no_grad():
+        recon_t = model(inp_t)
+
+    # Only segment[0] — identical to TEST.PY
+    noisy_np = inp_t[0].squeeze().cpu().numpy()
+    recon_np = recon_t[0].squeeze().cpu().numpy()
+
+    m  = evaluate(noisy_np, recon_np)
+    pf = passes(m)
+    ok = all(pf.values())
+
+    save_path = "/tmp/plot_result.png"
+    plot_signals(noisy_np, recon_np, title=title, save_path=save_path, fs=SAMPLE_RATE)
+    with open(save_path, "rb") as f:
+        png_bytes = f.read()
+
+    return m, pf, ok, png_bytes
+
+
+# ── Page ───────────────────────────────────────────────────────────────────────
+st.set_page_config(page_title="GW Denoiser", page_icon="🌊", layout="wide")
+st.title("🌊 Gravitational Wave Noise Filter")
 
 try:
     model, device = load_model()
@@ -107,7 +113,6 @@ with st.sidebar:
 
 # ── Inputs ─────────────────────────────────────────────────────────────────────
 st.subheader("Enter Event Parameters")
-
 col1, col2, col3, col4 = st.columns([2, 3, 1, 3])
 detector  = col1.radio("Detector", ["H1", "L1", "V1"], horizontal=True)
 gps_start = col2.number_input("GPS Start", value=1268903510, step=1, format="%d")
@@ -120,90 +125,56 @@ if gps_end <= gps_start:
 
 run = st.button("▶  Run Denoiser", type="primary", use_container_width=True)
 
-# ── Session state — results persist across reruns ──────────────────────────────
-if "results" not in st.session_state:
-    st.session_state.results     = None
-    st.session_state.last_run    = None   # (detector, gps_start, gps_end)
+# ── Session state ──────────────────────────────────────────────────────────────
+if "result" not in st.session_state:
+    st.session_state.result   = None
+if "last_run" not in st.session_state:
+    st.session_state.last_run = None
 
+# ── Run ────────────────────────────────────────────────────────────────────────
 if run:
-    # Clear old results if inputs changed
-    st.session_state.results  = None
+    st.session_state.result   = None
     st.session_state.last_run = (detector, int(gps_start), int(gps_end))
 
-    # Fetch + preprocess
-    with st.spinner(f"Fetching {detector} strain [{gps_start} – {gps_end}] from GWOSC…"):
+    with st.spinner(f"Fetching {detector} [{gps_start}–{gps_end}] from GWOSC…"):
         try:
             segments = cached_preprocess(detector, int(gps_start), int(gps_end))
         except Exception as e:
             st.error(f"Preprocessing failed: {e}")
             st.stop()
 
-    n_segs = len(segments)
-    st.write(f"**Evaluating all {n_segs} segments**")
+    with st.spinner("Running denoiser…"):
+        title    = f"{detector} | GPS {gps_start}–{gps_end}"
+        n_segs   = len(segments)
+        m, pf, ok, png_bytes = cached_run_and_plot(
+            segments.tobytes(), n_segs, title
+        )
 
-    # Inference
-    all_results = []
-    progress = st.progress(0, text="Running denoiser…")
-    for i in range(n_segs):
-        seg_bytes = segments[i].astype(np.float32).tobytes()
-        noisy_np, recon_np, m, pf, ok = cached_run_segment(seg_bytes, i)
-        all_results.append((i, noisy_np, recon_np, m, pf, ok))
-        progress.progress((i + 1) / n_segs, text=f"Segment {i+1}/{n_segs}")
-    progress.empty()
+    st.session_state.result = (m, pf, ok, png_bytes)
 
-    # Store in session state so results survive any rerun
-    st.session_state.results = all_results
-
-# ── Display results if available ───────────────────────────────────────────────
-if st.session_state.results is not None:
-    all_results = st.session_state.results
+# ── Display ────────────────────────────────────────────────────────────────────
+if st.session_state.result is not None:
+    m, pf, ok, png_bytes = st.session_state.result
     det, gs, ge = st.session_state.last_run
 
     st.divider()
-    st.subheader("Per-Segment Results")
+    badge = "✅ PASS" if ok else "❌ FAIL"
+    st.subheader(f"Result — {det} | GPS {gs}–{ge}  {badge}")
 
-    for i, noisy_np, recon_np, m, pf, ok in all_results:
-        with st.expander(f"Segment {i+1}  —  {'✅ PASS' if ok else '❌ FAIL'}", expanded=(i == 0)):
-            col1, col2 = st.columns([1, 2])
+    col1, col2, col3, col4, col5 = st.columns(5)
+    for col, name, key, fmt in zip(
+        [col1, col2, col3, col4, col5],
+        ["SNR (dB)", "Norm. MSE", "Noise Red. %", "Pearson", "Spectral MSE"],
+        ["snr", "mse", "nr", "pearson", "spec_mse"],
+        [".2f", ".4f", ".2f", ".4f", ".4f"],
+    ):
+        icon = "✅" if pf[key] else "❌"
+        col.metric(f"{icon} {name}", f"{m[key]:{fmt}}")
 
-            with col1:
-                def row(name, val, fmt, passed):
-                    return f"| {name} | {val:{fmt}} | {'✅' if passed else '❌'} |"
-                st.markdown("\n".join([
-                    "| Metric | Value | |",
-                    "|---|---|---|",
-                    row("SNR (dB)",     m["snr"],      ".2f", pf["snr"]),
-                    row("Norm. MSE",    m["mse"],      ".4f", pf["mse"]),
-                    row("Noise Red. %", m["nr"],       ".2f", pf["nr"]),
-                    row("Pearson",      m["pearson"],  ".4f", pf["pearson"]),
-                    row("Spectral MSE", m["spec_mse"], ".4f", pf["spec_mse"]),
-                ]))
+    st.image(png_bytes, use_column_width=True)
 
-            with col2:
-                title = f"{det} | GPS {gs}–{ge} | Segment {i+1}"
-                png_bytes = cached_plot(
-                    noisy_np.astype(np.float32).tobytes(),
-                    recon_np.astype(np.float32).tobytes(),
-                    title, i
-                )
-                st.image(png_bytes, use_column_width=True)
-
-    # Summary
-    st.divider()
-    st.subheader("Summary")
-
-    header = f"{'Segment':<10} {'SNR':>7} {'MSE':>7} {'NR%':>7} {'Pearson':>8} {'SpecMSE':>8} {'Pass':>6}"
-    rows_txt = [header, "-" * 55]
-    for i, _, _, m, pf, ok in all_results:
-        rows_txt.append(
-            f"{'Seg '+str(i+1):<10} {m['snr']:7.2f} {m['mse']:7.4f} {m['nr']:7.2f} "
-            f"{m['pearson']:8.4f} {m['spec_mse']:8.4f} {'PASS' if ok else 'FAIL':>6}"
-        )
-    st.code("\n".join(rows_txt))
-
-    n_pass = sum(r[5] for r in all_results)
-    st.metric("Segments passed", f"{n_pass} / {len(all_results)}")
-    if n_pass == len(all_results):
-        st.success("All evaluated segments passed every threshold.")
+    if ok:
+        st.success("All metrics passed.")
     else:
-        st.warning(f"{len(all_results) - n_pass} segment(s) failed one or more thresholds.")
+        failed = [k for k, v in pf.items() if not v]
+        st.warning(f"Failed metrics: {', '.join(failed)}")
