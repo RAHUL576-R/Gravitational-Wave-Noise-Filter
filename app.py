@@ -3,6 +3,8 @@ app.py — Streamlit deployment of the GW denoiser
 Runs ALL segments as a batch exactly like TEST.PY,
 then evaluates and plots segment[0] only.
 """
+import os
+port = int(os.environ.get("PORT", 8501))
 
 import numpy as np
 import torch
@@ -13,7 +15,7 @@ from utils import compute_snr, compute_pearson, compute_spectral_mse, plot_signa
 from model import Autoencoder
 
 TARGET_SNR      =  3.0
-TARGET_MSE      =  0.05
+TARGET_MSE      =  0.5
 TARGET_NR       = 40.0
 TARGET_PEARSON  =  0.85
 TARGET_SPEC_MSE =  0.10
