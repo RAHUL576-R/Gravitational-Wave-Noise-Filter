@@ -114,7 +114,7 @@ with st.sidebar:
 | Pearson Correlation | ≥ {TARGET_PEARSON} |
 | Spectral MSE | < {TARGET_SPEC_MSE} |
 """)
-    max_segs = st.slider("Max segments to evaluate", 1, 20, 5)
+
 
 # ── Inputs ─────────────────────────────────────────────────────────────────────
 st.subheader("Enter Event Parameters")
@@ -142,8 +142,8 @@ with st.spinner(f"Fetching {detector} strain [{gps_start} – {gps_end}] from GW
         st.error(f"Preprocessing failed: {e}")
         st.stop()
 
-n_segs = min(len(segments), max_segs)
-st.write(f"**Segments available:** {len(segments)}  |  **Evaluating:** {n_segs}")
+n_segs = len(segments)
+st.write(f"**Evaluating all {n_segs} segments**")
 
 # ── Inference + metrics (each segment cached independently) ────────────────────
 all_results = []
