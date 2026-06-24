@@ -2,6 +2,14 @@
 app.py — Streamlit deployment of the GW denoiser
 Runs ALL segments as a batch exactly like TEST.PY,
 then evaluates and plots segment[0] only.
+
+Changes from previous version
+------------------------------
+1. TARGET_MSE fixed 0.50 → 0.05  (matches TEST.PY)
+2. Amplitude rescaling removed    (was corrupting all metrics)
+   The 3 rescaling lines made recon_np diverge from what the
+   model actually outputs, inflating MSE while masking near-zero outputs.
+   Removing them makes app metrics identical to TEST.PY.
 """
 
 import numpy as np
@@ -12,8 +20,9 @@ from preprocessing import preprocess, SAMPLE_RATE, WINDOW_LENGTH
 from utils import compute_snr, compute_pearson, compute_spectral_mse, plot_signals
 from model import Autoencoder
 
+# ── Thresholds — identical to TEST.PY ─────────────────────────────────────────
 TARGET_SNR      =  3.0
-TARGET_MSE      =  0.50
+TARGET_MSE      =  0.05    # FIX: was 0.50 — now matches TEST.PY
 TARGET_NR       = 40.0
 TARGET_PEARSON  =  0.85
 TARGET_SPEC_MSE =  0.10
@@ -21,6 +30,7 @@ EPS             =  1e-12
 
 
 def evaluate(noisy, recon):
+    """Identical metric computation to TEST.PY."""
     residual = noisy - recon
     sig_pow  = np.mean(noisy ** 2)
     return dict(
@@ -30,6 +40,7 @@ def evaluate(noisy, recon):
         pearson  = compute_pearson(noisy, recon),
         spec_mse = compute_spectral_mse(noisy, recon),
     )
+
 
 def passes(m):
     return dict(
@@ -47,7 +58,7 @@ def load_model():
     m = Autoencoder().to(device)
     ckpt = torch.load("denoiser.pth", map_location=device)
     m.load_state_dict(ckpt["model_state"])
-    m.eval()  # identical to TEST.PY — eval mode, never switched
+    m.eval()   # identical to TEST.PY — eval mode, never switched
     epoch    = ckpt.get("epoch", "?")
     val_loss = ckpt.get("val_loss", float("nan"))
     return m, device, epoch, val_loss
@@ -65,13 +76,14 @@ def cached_run_and_plot(segments_bytes, n_segs, title):
     """
     Run ALL segments as one batch — identical to TEST.PY.
     Evaluate and plot only segment[0].
+
+    FIX: amplitude rescaling removed — it was corrupting metrics.
     """
     segments = np.frombuffer(segments_bytes, dtype=np.float32).copy().reshape(n_segs, WINDOW_LENGTH)
 
-    device   = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model, device, _, __ = load_model()
 
-    # Batch inference — identical to TEST.PY (model stays in eval mode)
+    # Batch inference — identical to TEST.PY
     inp_t = torch.tensor(segments, dtype=torch.float32).unsqueeze(1).to(device)
     with torch.no_grad():
         recon_t = model(inp_t)
@@ -80,10 +92,8 @@ def cached_run_and_plot(segments_bytes, n_segs, title):
     noisy_np = inp_t[0].squeeze().cpu().numpy()
     recon_np = recon_t[0].squeeze().cpu().numpy()
 
-    # Rescale recon to match noisy amplitude — handles PyTorch version differences
-    noisy_std = np.std(noisy_np) + 1e-12
-    recon_std = np.std(recon_np) + 1e-12
-    recon_np  = recon_np * (noisy_std / recon_std)
+    # FIX: NO amplitude rescaling — removed because it was
+    # distorting all downstream metrics vs TEST.PY output
 
     m  = evaluate(noisy_np, recon_np)
     pf = passes(m)
@@ -160,8 +170,8 @@ if run:
             st.stop()
 
     with st.spinner("Running denoiser…"):
-        title    = f"{detector} | GPS {gps_start}–{gps_end}"
-        n_segs   = len(segments)
+        title        = f"{detector} | GPS {gps_start}–{gps_end}"
+        n_segs       = len(segments)
         m, pf, ok, png_bytes = cached_run_and_plot(
             segments.tobytes(), n_segs, title
         )
@@ -181,8 +191,8 @@ if st.session_state.result is not None:
     for col, name, key, fmt in zip(
         [col1, col2, col3, col4, col5],
         ["SNR (dB)", "Norm. MSE", "Noise Red. %", "Pearson", "Spectral MSE"],
-        ["snr", "mse", "nr", "pearson", "spec_mse"],
-        [".2f", ".4f", ".2f", ".4f", ".4f"],
+        ["snr",      "mse",       "nr",            "pearson", "spec_mse"],
+        [".2f",      ".4f",       ".2f",           ".4f",     ".4f"],
     ):
         icon = "✅" if pf[key] else "❌"
         col.metric(f"{icon} {name}", f"{m[key]:{fmt}}")
