@@ -68,10 +68,7 @@ streamlit run app.py
 ---
 
 ### 4. Use the Application
-
-* Upload a noisy signal file (`.npy`)
-* The model processes the signal
-* View the denoised output graph
+VISIT THE DEPLOYMENT LINK
 
 ---
 
@@ -98,18 +95,14 @@ streamlit run app.py
 
 ---
 
-## 📌 Future Improvements
-
-* Real-time signal processing
-* Support for more detectors
-* Improved model accuracy
-* Enhanced visualization
 
 ---
 
 ## 👨‍💻 Author
 
 Rahul
+25113102
+EPH
 
 ---
 
