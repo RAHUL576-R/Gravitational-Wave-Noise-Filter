@@ -136,6 +136,10 @@ with st.sidebar:
 | Pearson Correlation | ≥ {TARGET_PEARSON} |
 | Spectral MSE | < {TARGET_SPEC_MSE} |
 """)
+    if st.button("🗑️ Clear Cache"):
+        st.cache_data.clear()
+        st.cache_resource.clear()
+        st.rerun()
 
 # ── Inputs ─────────────────────────────────────────────────────────────────────
 st.subheader("Enter Event Parameters")
@@ -150,7 +154,11 @@ if gps_end <= gps_start:
     st.stop()
 
 run = st.button("▶  Run Denoiser", type="primary", use_container_width=True)
-
+clear_cache = st.button("🗑️ Clear Cache", use_container_width=True)
+if clear_cache:
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    st.rerun()
 # ── Session state ──────────────────────────────────────────────────────────────
 if "result" not in st.session_state:
     st.session_state.result   = None

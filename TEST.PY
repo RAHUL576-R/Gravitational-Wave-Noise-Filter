@@ -92,7 +92,20 @@ for label, det, start, end in TEST_EVENTS:
     recon_np = recon[0].squeeze().cpu().numpy()
     resid_np = noisy_np - recon_np
 
-    sig_pow  = np.mean(noisy_np ** 2)
+
+
+    # ── DEBUG ─────────────────────────────────────────────────────────────────
+    print(f"  DEBUG segments shape : {segments.shape}")
+    print(f"  DEBUG noisy  std     : {np.std(noisy_np):.6f}")
+    print(f"  DEBUG recon  std     : {np.std(recon_np):.6f}")
+    print(f"  DEBUG noisy  min/max : {noisy_np.min():.4f} / {noisy_np.max():.4f}")
+    print(f"  DEBUG recon  min/max : {recon_np.min():.4f} / {recon_np.max():.4f}")
+    print(f"  DEBUG raw MSE (unnorm): {np.mean((noisy_np - recon_np)**2):.6f}")
+    print(f"  DEBUG sig_pow        : {np.mean(noisy_np**2):.6f}")
+    print(f"  DEBUG norm MSE       : {np.mean((noisy_np - recon_np)**2) / (np.mean(noisy_np**2) + 1e-12):.6f}")
+    # ────────────────────────────────────────────────────────────────────────────
+
+    sig_pow = np.mean(noisy_np ** 2)
 
     snr      = compute_snr(noisy_np, resid_np)
     mse      = np.mean((noisy_np - recon_np) ** 2) / (sig_pow + EPS)
