@@ -1,5 +1,7 @@
 """
-
+app.py — Streamlit deployment of the GW denoiser
+Runs ALL segments as a batch exactly like TEST.PY,
+then evaluates and plots segment[0] only.
 """
 
 import numpy as np
@@ -67,10 +69,12 @@ def cached_run_and_plot(segments_bytes, n_segs, title):
     device   = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model, _ = load_model()
 
-    # Batch inference — identical to TEST.PY
+    # Batch inference — use train() so BatchNorm uses batch stats like TEST.PY
     inp_t = torch.tensor(segments, dtype=torch.float32).unsqueeze(1).to(device)
+    model.train()
     with torch.no_grad():
         recon_t = model(inp_t)
+    model.eval()
 
     # Only segment[0] — identical to TEST.PY
     noisy_np = inp_t[0].squeeze().cpu().numpy()
