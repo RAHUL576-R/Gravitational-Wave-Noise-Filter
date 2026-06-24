@@ -64,36 +64,35 @@ def load_model():
     return m, device, epoch, val_loss
 
 
+
 @st.cache_data(show_spinner=False)
 def cached_preprocess(detector, gps_start, gps_end):
-    """Full preprocess — returns ALL segments exactly like TEST.PY."""
-    segs = preprocess(detector, gps_start, gps_end)   # (N, WINDOW_LENGTH)
-    return segs.astype(np.float32)
+    segs = preprocess(detector, gps_start, gps_end)
+    if len(segs) == 0:
+        raise ValueError("No segments returned")
+    return segs[:1].astype(np.float32)  # only first segment
+
+@st.cache_data(show_spinner=False)
+def cached_preprocess(detector, gps_start, gps_end):
+    segs = preprocess(detector, gps_start, gps_end)
+    if len(segs) == 0:
+        raise ValueError("No segments returned")
+    return segs[:1].astype(np.float32)  # only first segment — saves RAM, identical results
 
 
 @st.cache_data(show_spinner=False)
 def cached_run_and_plot(segments_bytes, n_segs, title):
-    """
-    Run ALL segments as one batch — identical to TEST.PY.
-    Evaluate and plot only segment[0].
-
-    FIX: amplitude rescaling removed — it was corrupting metrics.
-    """
     segments = np.frombuffer(segments_bytes, dtype=np.float32).copy().reshape(n_segs, WINDOW_LENGTH)
 
     model, device, _, __ = load_model()
 
-    # Batch inference — identical to TEST.PY
     inp_t = torch.tensor(segments, dtype=torch.float32).unsqueeze(1).to(device)
     with torch.no_grad():
         recon_t = model(inp_t)
 
-    # Only segment[0] — identical to TEST.PY
     noisy_np = inp_t[0].squeeze().cpu().numpy()
     recon_np = recon_t[0].squeeze().cpu().numpy()
-
-    # FIX: NO amplitude rescaling — removed because it was
-    # distorting all downstream metrics vs TEST.PY output
+    del inp_t, recon_t  # free RAM immediately
 
     m  = evaluate(noisy_np, recon_np)
     pf = passes(m)
@@ -105,8 +104,6 @@ def cached_run_and_plot(segments_bytes, n_segs, title):
         png_bytes = f.read()
 
     return m, pf, ok, png_bytes
-
-
 # ── Page ───────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="GW Denoiser", page_icon="🌊", layout="wide")
 st.title("🌊 Gravitational Wave Noise Filter")
