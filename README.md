@@ -163,7 +163,7 @@ The following events are **strictly excluded** from training and used only for e
 
 | Event | GPS Time | Notes |
 |---|---|---|
- # GW200322_091133
+     # GW200322_091133
     ("GW200322_091133", "H1", 1268903510, 1268903520),
     ("GW200322_091133", "L1", 1268903510, 1268903520),
     ("GW200322_091133", "V1", 1268903510, 1268903520),
