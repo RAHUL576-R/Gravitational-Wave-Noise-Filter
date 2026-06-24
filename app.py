@@ -1,16 +1,4 @@
-"""
-app.py — Streamlit deployment of the GW denoiser
-Runs ALL segments as a batch exactly like TEST.PY,
-then evaluates and plots segment[0] only.
 
-Changes from previous version
-------------------------------
-1. TARGET_MSE fixed 0.50 → 0.05  (matches TEST.PY)
-2. Amplitude rescaling removed    (was corrupting all metrics)
-   The 3 rescaling lines made recon_np diverge from what the
-   model actually outputs, inflating MSE while masking near-zero outputs.
-   Removing them makes app metrics identical to TEST.PY.
-"""
 
 import numpy as np
 import torch
@@ -20,7 +8,7 @@ from preprocessing import preprocess, SAMPLE_RATE, WINDOW_LENGTH
 from utils import compute_snr, compute_pearson, compute_spectral_mse, plot_signals
 from model import Autoencoder
 
-# ── Thresholds — identical to TEST.PY ─────────────────────────────────────────
+
 TARGET_SNR      =  3.0
 TARGET_MSE      =  0.05    # FIX: was 0.50 — now matches TEST.PY
 TARGET_NR       = 40.0
@@ -104,7 +92,7 @@ def cached_run_and_plot(segments_bytes, n_segs, title):
         png_bytes = f.read()
 
     return m, pf, ok, png_bytes
-# ── Page ───────────────────────────────────────────────────────────────────────
+
 st.set_page_config(page_title="GW Denoiser", page_icon="🌊", layout="wide")
 st.title("🌊 Gravitational Wave Noise Filter")
 
@@ -138,7 +126,7 @@ with st.sidebar:
         st.cache_resource.clear()
         st.rerun()
 
-# ── Inputs ─────────────────────────────────────────────────────────────────────
+
 st.subheader("Enter Event Parameters")
 col1, col2, col3, col4 = st.columns([2, 3, 1, 3])
 detector  = col1.radio("Detector", ["H1", "L1", "V1"], horizontal=True)
@@ -156,14 +144,12 @@ if clear_cache:
     st.cache_data.clear()
     st.cache_resource.clear()
     st.rerun()
-# ── Session state ──────────────────────────────────────────────────────────────
-if "result" not in st.session_state:
+
     st.session_state.result   = None
 if "last_run" not in st.session_state:
     st.session_state.last_run = None
 
-# ── Run ────────────────────────────────────────────────────────────────────────
-if run:
+
     st.session_state.result   = None
     st.session_state.last_run = (detector, int(gps_start), int(gps_end))
 
@@ -183,7 +169,7 @@ if run:
 
     st.session_state.result = (m, pf, ok, png_bytes)
 
-# ── Display ────────────────────────────────────────────────────────────────────
+
 if st.session_state.result is not None:
     m, pf, ok, png_bytes = st.session_state.result
     det, gs, ge = st.session_state.last_run

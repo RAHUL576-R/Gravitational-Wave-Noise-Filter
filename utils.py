@@ -1,7 +1,3 @@
-"""
-utils.py — Metrics and visualisation for GW denoiser
-=====================================================
-"""
 
 import matplotlib
 matplotlib.use("Agg")   # headless / script-safe
@@ -15,15 +11,7 @@ from scipy.signal import spectrogram as scipy_spectrogram
 # ─────────────────────────────────────────────────────────────────────────────
 
 def compute_snr(signal: np.ndarray, noise: np.ndarray) -> float:
-    """
-    SNR improvement in dB.
-      SNR = 10 * log10(P_signal / P_noise)
-
-    Parameters
-    ----------
-    signal : the (noisy) input
-    noise  : residual after denoising  (input - reconstruction)
-    """
+   
     p_sig  = np.mean(signal ** 2)
     p_noise = np.mean(noise  ** 2)
     if p_noise < 1e-30:
@@ -32,14 +20,7 @@ def compute_snr(signal: np.ndarray, noise: np.ndarray) -> float:
 
 
 def compute_pearson(a: np.ndarray, b: np.ndarray) -> float:
-    """
-    Pearson correlation coefficient between two waveforms.
-
-    Range: [-1, 1].  A value >= 0.85 means the shape is well-recovered.
-    This is the most direct indicator of whether the reconstructed
-    waveform looks physically correct — MSE alone can be low even if
-    the waveform is time-shifted or amplitude-scaled.
-    """
+   
     a  = a - np.mean(a)
     b  = b - np.mean(b)
     num = np.sum(a * b)
@@ -52,12 +33,7 @@ def compute_spectral_mse(
     recon:  np.ndarray,
     fs:     int = 4096,
 ) -> float:
-    """
-    Frequency-domain MSE on normalised FFT magnitudes.
-
-    A model that produces the right time-domain shape but wrong
-    frequency content will score poorly here.
-    """
+   
     n    = len(signal)
     s_mag = np.abs(np.fft.rfft(signal)) / (n / 2)
     r_mag = np.abs(np.fft.rfft(recon))  / (n / 2)
@@ -75,13 +51,7 @@ def plot_signals(
     save_path:     str  = None,
     fs:            int  = 4096,
 ) -> None:
-    """
-    Four-panel diagnostic plot:
-      Panel 1 — Time-domain overlay (noisy vs reconstructed)
-      Panel 2 — Residual noise in time domain
-      Panel 3 — FFT magnitude spectrum comparison
-      Panel 4 — Spectrogram of reconstructed signal (chirp visibility)
-    """
+    
     if save_path is None:
         save_path = title.replace(" ", "_").replace("/", "-") + ".png"
 

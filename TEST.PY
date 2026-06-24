@@ -1,28 +1,3 @@
-"""
-TEST.PY — Comprehensive evaluation of the trained GW denoiser
-=============================================================
-
-Metrics
--------
-1. SNR improvement (dB)       — how much signal-to-noise improved
-2. Normalised MSE              — waveform reconstruction fidelity
-3. Noise power reduction (%)   — how much noise was suppressed
-4. Pearson correlation         — shape similarity (NEW)
-   Linear correlation between clean template and reconstruction.
-   A bad reconstruction gives ~0; a perfect one gives 1.0.
-   This is the most direct measure of "does the waveform look right".
-5. Spectral MSE                — frequency-domain fidelity (NEW)
-   Ensures the model didn't just get the time-domain shape right
-   while distorting the frequency content.
-
-Thresholds
-----------
-TARGET_SNR      >=  3.0 dB
-TARGET_MSE      <   0.05
-TARGET_NR       >= 40.0 %
-TARGET_PEARSON  >=  0.85    (new -- strict waveform shape check)
-TARGET_SPEC_MSE <   0.10    (new -- spectral fidelity)
-"""
 
 import numpy as np
 import torch
