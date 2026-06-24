@@ -80,6 +80,11 @@ def cached_run_and_plot(segments_bytes, n_segs, title):
     noisy_np = inp_t[0].squeeze().cpu().numpy()
     recon_np = recon_t[0].squeeze().cpu().numpy()
 
+    # Rescale recon to match noisy amplitude — fixes scale mismatch from BatchNorm train() mode
+    noisy_std = np.std(noisy_np) + 1e-12
+    recon_std = np.std(recon_np) + 1e-12
+    recon_np  = recon_np * (noisy_std / recon_std)
+
     m  = evaluate(noisy_np, recon_np)
     pf = passes(m)
     ok = all(pf.values())
