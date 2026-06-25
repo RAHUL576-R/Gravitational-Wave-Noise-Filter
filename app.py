@@ -1,4 +1,6 @@
-
+"""
+app.py — Streamlit deployment of the GW denoiser
+"""
 
 import numpy as np
 import torch
@@ -8,9 +10,9 @@ from preprocessing import preprocess, SAMPLE_RATE, WINDOW_LENGTH
 from utils import compute_snr, compute_pearson, compute_spectral_mse, plot_signals
 from model import Autoencoder
 
-
+# ── Thresholds — identical to TEST.PY ─────────────────────────────────────────
 TARGET_SNR      =  3.0
-TARGET_MSE      =  0.05    # FIX: was 0.50 — now matches TEST.PY
+TARGET_MSE      =  0.05
 TARGET_NR       = 40.0
 TARGET_PEARSON  =  0.85
 TARGET_SPEC_MSE =  0.10
@@ -18,7 +20,6 @@ EPS             =  1e-12
 
 
 def evaluate(noisy, recon):
-    """Identical metric computation to TEST.PY."""
     residual = noisy - recon
     sig_pow  = np.mean(noisy ** 2)
     return dict(
@@ -46,26 +47,18 @@ def load_model():
     m = Autoencoder().to(device)
     ckpt = torch.load("denoiser.pth", map_location=device)
     m.load_state_dict(ckpt["model_state"])
-    m.eval()   # identical to TEST.PY — eval mode, never switched
+    m.eval()
     epoch    = ckpt.get("epoch", "?")
     val_loss = ckpt.get("val_loss", float("nan"))
     return m, device, epoch, val_loss
 
 
-
 @st.cache_data(show_spinner=False)
 def cached_preprocess(detector, gps_start, gps_end):
     segs = preprocess(detector, gps_start, gps_end)
     if len(segs) == 0:
         raise ValueError("No segments returned")
-    return segs[:1].astype(np.float32)  # only first segment
-
-@st.cache_data(show_spinner=False)
-def cached_preprocess(detector, gps_start, gps_end):
-    segs = preprocess(detector, gps_start, gps_end)
-    if len(segs) == 0:
-        raise ValueError("No segments returned")
-    return segs[:1].astype(np.float32)  # only first segment — saves RAM, identical results
+    return segs[:1].astype(np.float32)  # only first segment — saves RAM
 
 
 @st.cache_data(show_spinner=False)
@@ -93,6 +86,8 @@ def cached_run_and_plot(segments_bytes, n_segs, title):
 
     return m, pf, ok, png_bytes
 
+
+# ── Page ───────────────────────────────────────────────────────────────────────
 st.set_page_config(page_title="GW Denoiser", page_icon="🌊", layout="wide")
 st.title("🌊 Gravitational Wave Noise Filter")
 
@@ -121,12 +116,12 @@ with st.sidebar:
 | Pearson Correlation | ≥ {TARGET_PEARSON} |
 | Spectral MSE | < {TARGET_SPEC_MSE} |
 """)
-    if st.button("🗑️ Clear Cache"):
+    if st.button("🗑️ Clear Cache", use_container_width=True):
         st.cache_data.clear()
         st.cache_resource.clear()
         st.rerun()
 
-
+# ── Inputs ─────────────────────────────────────────────────────────────────────
 st.subheader("Enter Event Parameters")
 col1, col2, col3, col4 = st.columns([2, 3, 1, 3])
 detector  = col1.radio("Detector", ["H1", "L1", "V1"], horizontal=True)
@@ -139,17 +134,15 @@ if gps_end <= gps_start:
     st.stop()
 
 run = st.button("▶  Run Denoiser", type="primary", use_container_width=True)
-clear_cache = st.button("🗑️ Clear Cache", use_container_width=True)
-if clear_cache:
-    st.cache_data.clear()
-    st.cache_resource.clear()
-    st.rerun()
 
+# ── Session state ──────────────────────────────────────────────────────────────
+if "result" not in st.session_state:
     st.session_state.result   = None
 if "last_run" not in st.session_state:
     st.session_state.last_run = None
 
-
+# ── Run ────────────────────────────────────────────────────────────────────────
+if run:
     st.session_state.result   = None
     st.session_state.last_run = (detector, int(gps_start), int(gps_end))
 
@@ -161,15 +154,22 @@ if "last_run" not in st.session_state:
             st.stop()
 
     with st.spinner("Running denoiser…"):
-        title        = f"{detector} | GPS {gps_start}–{gps_end}"
-        n_segs       = len(segments)
-        m, pf, ok, png_bytes = cached_run_and_plot(
-            segments.tobytes(), n_segs, title
-        )
+        try:
+            title  = f"{detector} | GPS {gps_start}–{gps_end}"
+            n_segs = len(segments)
+            m, pf, ok, png_bytes = cached_run_and_plot(
+                segments.tobytes(), n_segs, title
+            )
+        except MemoryError:
+            st.error("Out of memory — click 🗑️ Clear Cache in the sidebar and try again.")
+            st.stop()
+        except Exception as e:
+            st.error(f"Inference failed: {e}")
+            st.stop()
 
     st.session_state.result = (m, pf, ok, png_bytes)
 
-
+# ── Display ────────────────────────────────────────────────────────────────────
 if st.session_state.result is not None:
     m, pf, ok, png_bytes = st.session_state.result
     det, gs, ge = st.session_state.last_run
